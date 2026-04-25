@@ -1,0 +1,42 @@
+[
+  {
+    "id": "lathe-1",
+    "name": "Токарный станок",
+    "width": 1200,
+    "length": 2400,
+    "color": "#2563eb",
+    "safetyZone": 1000
+  },
+  {
+    "id": "milling-1",
+    "name": "Фрезерный станок",
+    "width": 1600,
+    "length": 2200,
+    "color": "#0f766e",
+    "safetyZone": 1000
+  },
+  {
+    "id": "grinder-1",
+    "name": "Шлифовальный станок",
+    "width": 1100,
+    "length": 1800,
+    "color": "#9333ea",
+    "safetyZone": 700
+  },
+  {
+    "id": "press-1",
+    "name": "Гидравлический пресс",
+    "width": 2100,
+    "length": 2600,
+    "color": "#dc2626",
+    "safetyZone": 1200
+  },
+  {
+    "id": "saw-1",
+    "name": "Ленточнопильный станок",
+    "width": 1400,
+    "length": 1900,
+    "color": "#ea580c",
+    "safetyZone": 750
+  }
+]
