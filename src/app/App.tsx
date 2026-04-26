@@ -11,9 +11,14 @@ import {
   updateProject,
 } from './api/projects'
 import { getSystemStatus } from './api/system'
+import MachineShowcaseModal from './components/MachineShowcaseModal'
 import ProjectCanvas from './components/ProjectCanvas'
 import {
-  CATALOG,
+  getPreferredCatalogIdByVisualId,
+  getMachineShowcaseVisuals,
+  getMachineCanvasAssetByCatalogId,
+} from '../../shared/domain/machine-visuals.js'
+import {
   DEFAULT_ROOM,
   TEMPLATES,
   getCatalogItem,
@@ -21,6 +26,7 @@ import {
 } from '../../shared/domain/catalog.js'
 import {
   computePlacementWarnings,
+  generateLayoutForProject,
   materializeParseResult,
 } from '../../shared/domain/project-engine.js'
 import type {
@@ -42,6 +48,7 @@ function App() {
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [isShowcaseOpen, setIsShowcaseOpen] = useState(false)
   const [createTitle, setCreateTitle] = useState('Новый проект линии')
   const [createMode, setCreateMode] = useState<ProjectMode>('manual')
   const [aiInstruction, setAiInstruction] = useState('')
@@ -52,6 +59,7 @@ function App() {
       null,
     [project, selectedPlacementId],
   )
+  const showcaseVisuals = useMemo(() => getMachineShowcaseVisuals(), [])
 
   const loadProjects = async () => {
     const nextProjects = await listProjects()
@@ -319,35 +327,47 @@ function App() {
     }
   }
 
-  const handleAddItem = (catalogId: string) => {
+  const handleAddShowcaseVisuals = (visualIds: string[]) => {
+    if (visualIds.length === 0) {
+      setNotice('Выберите хотя бы один станок в витрине.')
+      return
+    }
+
+    const catalogIds = visualIds
+      .map((visualId) => getPreferredCatalogIdByVisualId(visualId))
+      .filter((catalogId): catalogId is string => Boolean(catalogId))
+
+    if (catalogIds.length === 0) {
+      setNotice('Для выбранных визуалов пока нет сопоставления с проектными объектами.')
+      return
+    }
+
     setProject((currentProject) => {
       if (!currentProject) {
         return currentProject
       }
 
-      const nextProject: Project = {
+      const draftProject: Project = {
         ...currentProject,
         items: [
           ...currentProject.items,
-          {
-            id: crypto.randomUUID(),
-            catalogId,
-            quantity: 1,
-            sourceText: getCatalogItem(catalogId)?.code ?? catalogId,
-            chosenBy: 'manual',
-            replacementReason: null,
-            unresolvedFlag: false,
-          },
+          ...catalogIds.map((catalogId) => createProjectItem(catalogId)),
         ],
-        placements: [],
-        warnings: [],
-        status: 'draft',
         lastPendingPatch: null,
       }
+      const layoutResult = generateLayoutForProject(draftProject)
 
-      return nextProject
+      return {
+        ...draftProject,
+        placements: layoutResult.placements,
+        warnings: layoutResult.warnings,
+        status: 'draft',
+      }
     })
-    setNotice('Позиция добавлена в состав. Перестройте схему, чтобы увидеть её на плане.')
+
+    setSelectedPlacementId(null)
+    setIsShowcaseOpen(false)
+    setNotice(`Добавлено в проект и расставлено: ${catalogIds.length}`)
   }
 
   const handleRemoveItem = (projectItemId: string) => {
@@ -356,20 +376,22 @@ function App() {
         return currentProject
       }
 
-      const nextProject = {
+      const draftProject: Project = {
         ...currentProject,
         items: currentProject.items.filter((item) => item.id !== projectItemId),
         placements: currentProject.placements.filter(
           (placement) => placement.projectItemId !== projectItemId,
         ),
+        lastPendingPatch: null,
       }
+      const layoutResult = generateLayoutForProject(draftProject)
 
-      nextProject.warnings = computePlacementWarnings(
-        nextProject.room,
-        nextProject.placements,
-      )
-
-      return nextProject
+      return {
+        ...draftProject,
+        placements: layoutResult.placements,
+        warnings: layoutResult.warnings,
+        status: 'draft',
+      }
     })
     setSelectedPlacementId(null)
   }
@@ -388,8 +410,8 @@ function App() {
 
   const handleMovePlacement = (placementId: string, x: number, y: number) => {
     updatePlacement(placementId, (placement) => ({
-      ...placement,
-      x,
+        ...placement,
+        x,
       y,
       manuallyAdjusted: true,
     }))
@@ -435,6 +457,26 @@ function App() {
         },
       }
     })
+  }
+
+  const exportCurrentProjectFile = async (format: 'dxf' | 'pdf') => {
+    if (!project) {
+      return
+    }
+
+    setBusyKey(`export-${format}`)
+    setNotice(null)
+
+    try {
+      const savedProject = await updateProject(project.id, toUpdateProjectInput(project))
+      setProject(savedProject)
+      await loadProjects()
+      await downloadProjectFile(savedProject.id, format, savedProject.title)
+    } catch (error) {
+      setNotice(getErrorMessage(error))
+    } finally {
+      setBusyKey(null)
+    }
   }
 
   const handleRemoveParsedItem = (index: number) => {
@@ -506,8 +548,9 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.08),_transparent_42%),linear-gradient(135deg,_#f4efe4_0%,_#f8f5ee_40%,_#efe7d6_100%)] text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-[1820px] flex-col gap-4 px-4 py-4 xl:flex-row xl:px-6 xl:py-6">
+    <>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.08),_transparent_42%),linear-gradient(135deg,_#f4efe4_0%,_#f8f5ee_40%,_#efe7d6_100%)] text-slate-900">
+        <div className="mx-auto flex min-h-screen max-w-[1820px] flex-col gap-4 px-4 py-4 xl:flex-row xl:px-6 xl:py-6">
         <aside className="w-full rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_rgba(15,23,42,0.94),_rgba(30,41,59,0.92))] p-4 text-slate-100 shadow-[0_30px_80px_rgba(15,23,42,0.24)] xl:w-[330px]">
           <div className="mb-5 space-y-2">
             <span className="inline-flex rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-300">
@@ -523,21 +566,29 @@ function App() {
               Текст менеджера, ручной состав, AI-правки и инженерный экспорт в
               одном проекте.
             </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsShowcaseOpen(true)}
+                className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/20"
+              >
+                Открыть DXF-витрину станков
+              </button>
+            </div>
           </div>
-
             <div className="rounded-[22px] border border-white/10 bg-white/6 px-4 py-3 text-xs text-slate-300">
-              <div className="uppercase tracking-[0.18em] text-slate-400">AI Status</div>
+              <div className="uppercase tracking-[0.18em] text-slate-400">Статус AI</div>
               <div className="mt-2 text-sm font-semibold text-white">
                 {systemStatus
                   ? systemStatus.aiEnabled
                     ? `OpenRouter${systemStatus.model ? ` • ${systemStatus.model}` : ''}`
-                    : 'Fallback rules only'
-                  : 'Status unavailable'}
+                    : 'Только fallback-правила'
+                  : 'Статус недоступен'}
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-400">
                 {systemStatus?.aiEnabled
-                  ? 'Р РµР°Р»СЊРЅС‹Р№ AI СѓС‡Р°СЃС‚РІСѓРµС‚ РІ AI-parse Рё AI-edit РјР°СЂС€СЂСѓС‚Р°С….'
-                  : 'Р•СЃР»Рё OPENROUTER_API_KEY РЅРµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅРЅС‹Р№ fallback РїРѕ РєР°С‚Р°Р»РѕРіСѓ Рё Р°Р»РёР°СЃР°Рј.'}
+                  ? 'Реальный AI включён: доступны AI-parse и AI-edit сценарии.'
+                  : 'Если OPENROUTER_API_KEY не задан, используется детерминированный fallback по каталогу и алиасам.'}
               </div>
             </div>
           <section className="rounded-[26px] border border-white/10 bg-white/6 p-4">
@@ -959,20 +1010,9 @@ function App() {
                     })}
                   </div>
 
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {CATALOG.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => handleAddItem(item.id)}
-                        className="rounded-[20px] border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-cyan-400 hover:bg-cyan-50/70"
-                      >
-                        <div className="text-sm font-semibold text-slate-900">
-                          {item.code}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">{item.name}</div>
-                      </button>
-                    ))}
+                  <div className="mt-4 rounded-[20px] border border-dashed border-cyan-200 bg-cyan-50/70 px-4 py-4 text-sm text-cyan-950">
+                    Станки добавляются через кнопку <span className="font-semibold">«Открыть DXF-витрину станков»</span>.
+                    Старый прямой каталог на этой панели отключён, чтобы не дублировать сценарий и не путать проектный поток.
                   </div>
                 </section>
 
@@ -982,19 +1022,24 @@ function App() {
                       Выбранный элемент
                     </h3>
                     <div className="mt-4 rounded-[20px] border border-slate-200 bg-white p-4">
-                      <div className="text-lg font-semibold text-slate-900">
-                        {selectedPlacement.label}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-500">
-                        X/Y: {Math.round(selectedPlacement.x).toLocaleString('ru-RU')} /{' '}
-                        {Math.round(selectedPlacement.y).toLocaleString('ru-RU')} мм
-                      </div>
-                      <div className="mt-1 text-sm text-slate-500">
-                        Размер: {selectedPlacement.width.toLocaleString('ru-RU')} x{' '}
-                        {selectedPlacement.length.toLocaleString('ru-RU')} мм
-                      </div>
-                      <div className="mt-1 text-sm text-slate-500">
-                        Поворот: {selectedPlacement.rotation}°
+                      <div className="flex items-start gap-4">
+                        <CatalogVisualPreview catalogId={selectedPlacement.catalogId} size="large" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-lg font-semibold text-slate-900">
+                            {selectedPlacement.label}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            X/Y: {Math.round(selectedPlacement.x).toLocaleString('ru-RU')} /{' '}
+                            {Math.round(selectedPlacement.y).toLocaleString('ru-RU')} мм
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            Размер: {selectedPlacement.width.toLocaleString('ru-RU')} x{' '}
+                            {selectedPlacement.length.toLocaleString('ru-RU')} мм
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            Поворот: {selectedPlacement.rotation}°
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div className="mt-4 flex gap-2">
@@ -1132,12 +1177,12 @@ function App() {
               }}
               onExportDxf={() => {
                 if (project) {
-                  void downloadProjectFile(project.id, 'dxf', project.title)
+                  void exportCurrentProjectFile('dxf')
                 }
               }}
               onExportPdf={() => {
                 if (project) {
-                  void downloadProjectFile(project.id, 'pdf', project.title)
+                  void exportCurrentProjectFile('pdf')
                 }
               }}
             />
@@ -1162,8 +1207,16 @@ function App() {
             </div>
           </main>
         )}
+        </div>
       </div>
-    </div>
+
+      <MachineShowcaseModal
+        isOpen={isShowcaseOpen}
+        visuals={showcaseVisuals}
+        onAddToProject={handleAddShowcaseVisuals}
+        onClose={() => setIsShowcaseOpen(false)}
+      />
+    </>
   )
 }
 
@@ -1208,6 +1261,52 @@ function findProjectItemLabel(projectItemId: string, items: ProjectItem[]) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Неожиданная ошибка.'
+}
+
+function createProjectItem(catalogId: string): ProjectItem {
+  return {
+    id: crypto.randomUUID(),
+    catalogId,
+    quantity: 1,
+    sourceText: getCatalogItem(catalogId)?.code ?? catalogId,
+    chosenBy: 'manual',
+    replacementReason: null,
+    unresolvedFlag: false,
+  }
+}
+
+interface CatalogVisualPreviewProps {
+  catalogId: string
+  size?: 'small' | 'large'
+}
+
+function CatalogVisualPreview({
+  catalogId,
+  size = 'small',
+}: CatalogVisualPreviewProps) {
+  const preview = getMachineCanvasAssetByCatalogId(catalogId)
+  const sizeClasses =
+    size === 'large'
+      ? 'h-24 w-32 rounded-[18px] p-3'
+      : 'h-[72px] w-24 rounded-[16px] p-2'
+
+  return (
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden border border-slate-200 bg-[linear-gradient(rgba(148,163,184,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.14)_1px,transparent_1px)] bg-[size:18px_18px] ${sizeClasses}`}
+    >
+      {preview ? (
+        <img
+          src={preview.url}
+          alt={catalogId}
+          className="max-h-full max-w-full object-contain"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center rounded-[12px] bg-slate-100 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+          {catalogId}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default App

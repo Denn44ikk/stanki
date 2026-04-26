@@ -8,6 +8,7 @@
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "tsx watch server/http/index.ts",
+    "generate:machine-previews": "node ./scripts/generate-machine-previews.mjs",
     "build": "npm run clean && tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",

@@ -1,0 +1,84 @@
+{
+  "source": "D:\\Разработка\\Дополнительные проекты\\10. Расстановка станков\\_ИИ\\Вариант 1\\КП С750-1.dxf",
+  "machineCount": 13,
+  "machines": [
+    {
+      "id": "U44",
+      "width": 84.989,
+      "height": 10.23,
+      "url": "/dxf-machines/U44.svg"
+    },
+    {
+      "id": "U47",
+      "width": 60.435,
+      "height": 9.618,
+      "url": "/dxf-machines/U47.svg"
+    },
+    {
+      "id": "U45",
+      "width": 35.074,
+      "height": 46.04,
+      "url": "/dxf-machines/U45.svg"
+    },
+    {
+      "id": "U46",
+      "width": 34.757,
+      "height": 17.821,
+      "url": "/dxf-machines/U46.svg"
+    },
+    {
+      "id": "U49",
+      "width": 30.0,
+      "height": 11.348,
+      "url": "/dxf-machines/U49.svg"
+    },
+    {
+      "id": "U43",
+      "width": 26.261,
+      "height": 20.04,
+      "url": "/dxf-machines/U43.svg"
+    },
+    {
+      "id": "U48",
+      "width": 24.271,
+      "height": 14.094,
+      "url": "/dxf-machines/U48.svg"
+    },
+    {
+      "id": "U50",
+      "width": 43.614,
+      "height": 31.064,
+      "url": "/dxf-machines/U50.svg"
+    },
+    {
+      "id": "U54",
+      "width": 45.93,
+      "height": 13.625,
+      "url": "/dxf-machines/U54.svg"
+    },
+    {
+      "id": "U53",
+      "width": 34.0,
+      "height": 12.775,
+      "url": "/dxf-machines/U53.svg"
+    },
+    {
+      "id": "U55",
+      "width": 30.0,
+      "height": 6.75,
+      "url": "/dxf-machines/U55.svg"
+    },
+    {
+      "id": "U52",
+      "width": 20.56,
+      "height": 16.265,
+      "url": "/dxf-machines/U52.svg"
+    },
+    {
+      "id": "U51",
+      "width": 11.595,
+      "height": 11.348,
+      "url": "/dxf-machines/U51.svg"
+    }
+  ]
+}

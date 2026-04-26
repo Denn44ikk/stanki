@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type Konva from 'konva'
-import { Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
+import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import {
   getNearestWallDistances,
   getPlacementBounds,
-  getSafetyBounds,
 } from '../../../shared/domain/geometry.js'
+import {
+  getMachineCanvasAssetByCatalogId,
+  type MachineFullGeometryAsset,
+} from '../../../shared/domain/machine-visuals.js'
 import type {
   LayoutPlacement,
   RoomSpec,
@@ -76,6 +79,7 @@ function ProjectCanvas({
   const originY = (stageHeight - roomPixelHeight) / 2
   const selectedPlacement =
     placements.find((placement) => placement.id === selectedPlacementId) ?? null
+  const machineImages = useMachineImages(placements)
 
   const handleStageMouseDown = (targetName: string) => {
     if (targetName === 'stage' || targetName === 'room-shell') {
@@ -111,7 +115,6 @@ function ProjectCanvas({
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-slate-600">
           <LegendChip color="bg-cyan-500" label="Выбран" />
-          <LegendChip color="bg-amber-500" label="Зона безопасности" />
           <LegendChip color="bg-rose-500" label="Конфликт / выход" />
           <button
             type="button"
@@ -195,15 +198,12 @@ function ProjectCanvas({
             />
 
             {placements.map((placement) => {
-              const bounds = getPlacementBounds(placement)
-              const safetyBounds = getSafetyBounds(placement)
               const centerX = originX + placement.x * scale
               const centerY = originY + placement.y * scale
-              const widthPx = bounds.width * scale
-              const heightPx = bounds.height * scale
-              const safetyWidthPx = safetyBounds.width * scale
-              const safetyHeightPx = safetyBounds.height * scale
               const isSelected = placement.id === selectedPlacementId
+              const visual = getMachineCanvasAssetByCatalogId(placement.catalogId)
+              const visualImage = visual ? machineImages[visual.url] : null
+              const imageLayout = getVisualLayoutMetrics(placement, visual, scale)
 
               return (
                 <Group
@@ -215,66 +215,59 @@ function ProjectCanvas({
                   onTap={() => onSelect(placement.id)}
                   onDblClick={() => onRotate(placement.id)}
                   onDragStart={() => onSelect(placement.id)}
-                  onDragMove={(event) => {
+                  onDragEnd={(event) => {
                     const nextX = (event.target.x() - originX) / scale
                     const nextY = (event.target.y() - originY) / scale
                     onMove(placement.id, nextX, nextY)
                   }}
                 >
-                  <Rect
-                    x={-safetyWidthPx / 2}
-                    y={-safetyHeightPx / 2}
-                    width={safetyWidthPx}
-                    height={safetyHeightPx}
-                    stroke={isSelected ? '#0891b2' : '#d97706'}
-                    strokeWidth={1.4}
-                    dash={[12, 8]}
-                    cornerRadius={24}
-                    opacity={0.75}
-                  />
-
-                  <Rect
-                    x={-widthPx / 2}
-                    y={-heightPx / 2}
-                    width={widthPx}
-                    height={heightPx}
-                    fill={placement.color}
-                    opacity={0.94}
-                    stroke={isSelected ? '#0891b2' : '#0f172a'}
-                    strokeWidth={isSelected ? 4 : 2}
-                    cornerRadius={18}
-                    shadowBlur={isSelected ? 24 : 14}
-                    shadowColor={
-                      isSelected
-                        ? 'rgba(8, 145, 178, 0.34)'
-                        : 'rgba(15, 23, 42, 0.14)'
-                    }
-                  />
-
-                  <Text
-                    x={-widthPx / 2 + 12}
-                    y={-14}
-                    width={Math.max(widthPx - 24, 42)}
-                    text={placement.label}
-                    fontSize={Math.max(11, Math.min(15, widthPx / 11))}
-                    fontFamily="Manrope"
-                    fontStyle="700"
-                    align="center"
-                    fill="#ffffff"
-                    listening={false}
-                  />
-
-                  <Text
-                    x={-widthPx / 2 + 10}
-                    y={heightPx / 2 - 24}
-                    width={Math.max(widthPx - 20, 40)}
-                    text={`${placement.width.toLocaleString('ru-RU')} x ${placement.length.toLocaleString('ru-RU')} мм`}
-                    fontSize={11}
-                    fontFamily="Manrope"
-                    align="center"
-                    fill="rgba(255,255,255,0.82)"
-                    listening={false}
-                  />
+                  <Group rotation={placement.rotation}>
+                    {visualImage ? (
+                      <>
+                        {isSelected ? (
+                          <Rect
+                            x={imageLayout.x - 10}
+                            y={imageLayout.y - 10}
+                            width={imageLayout.width + 20}
+                            height={imageLayout.height + 20}
+                            stroke="#0891b2"
+                            strokeWidth={2}
+                            cornerRadius={18}
+                            opacity={0.9}
+                          />
+                        ) : null}
+                        <KonvaImage
+                          image={visualImage}
+                          x={imageLayout.x}
+                          y={imageLayout.y}
+                          width={imageLayout.width}
+                          height={imageLayout.height}
+                          opacity={0.98}
+                          perfectDrawEnabled={false}
+                          shadowForStrokeEnabled={false}
+                        />
+                        <Rect
+                          x={imageLayout.x}
+                          y={imageLayout.y}
+                          width={imageLayout.width}
+                          height={imageLayout.height}
+                          fill="rgba(0,0,0,0)"
+                        />
+                      </>
+                    ) : (
+                      <Rect
+                        x={imageLayout.x}
+                        y={imageLayout.y}
+                        width={imageLayout.width}
+                        height={imageLayout.height}
+                        fill={placement.color}
+                        opacity={0.94}
+                        stroke={isSelected ? '#0891b2' : '#0f172a'}
+                        strokeWidth={isSelected ? 4 : 2}
+                        cornerRadius={18}
+                      />
+                    )}
+                  </Group>
                 </Group>
               )
             })}
@@ -297,6 +290,101 @@ function ProjectCanvas({
       </div>
     </section>
   )
+}
+
+function getVisualLayoutMetrics(
+  placement: LayoutPlacement,
+  visual: MachineFullGeometryAsset | null,
+  scale: number,
+) {
+  const availableWidth = placement.width * scale
+  const availableHeight = placement.length * scale
+
+  if (!visual) {
+    return {
+      width: availableWidth,
+      height: availableHeight,
+      x: -availableWidth / 2,
+      y: -availableHeight / 2,
+    }
+  }
+
+  const fitScale = Math.min(availableWidth / visual.width, availableHeight / visual.height)
+  const width = visual.width * fitScale
+  const height = visual.height * fitScale
+
+  return {
+    width,
+    height,
+    x: -width / 2,
+    y: -height / 2,
+  }
+}
+
+const previewImageCache = new Map<string, HTMLImageElement>()
+
+function useMachineImages(placements: LayoutPlacement[]) {
+  const [images, setImages] = useState<Record<string, HTMLImageElement>>({})
+
+  const visuals = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          placements
+            .map((placement) => getMachineCanvasAssetByCatalogId(placement.catalogId))
+            .filter((visual): visual is MachineFullGeometryAsset => Boolean(visual))
+            .map((visual) => [visual.url, visual] as const),
+        ).values(),
+      ),
+    [placements],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (visuals.length === 0) {
+      setImages({})
+      return
+    }
+
+    const nextImages: Record<string, HTMLImageElement> = {}
+    let loaded = 0
+
+    const commit = () => {
+      if (!cancelled && loaded === visuals.length) {
+        setImages(nextImages)
+      }
+    }
+
+    visuals.forEach((visual) => {
+      const cached = previewImageCache.get(visual.url)
+      if (cached) {
+        nextImages[visual.url] = cached
+        loaded += 1
+        commit()
+        return
+      }
+
+      const image = new window.Image()
+      image.onload = () => {
+        previewImageCache.set(visual.url, image)
+        nextImages[visual.url] = image
+        loaded += 1
+        commit()
+      }
+      image.onerror = () => {
+        loaded += 1
+        commit()
+      }
+      image.src = visual.url
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [visuals])
+
+  return images
 }
 
 interface LegendChipProps {

@@ -128,19 +128,22 @@ export function generateLayoutForProject(project: Project): {
   const room = project.room
   const orderLookup =
     template ? TEMPLATE_SEQUENCE_LOOKUP.get(template.id) ?? new Map() : new Map()
-  const orderedItems = [...project.items].sort((first, second) => {
-    const firstIndex = orderLookup.get(first.catalogId) ?? Number.MAX_SAFE_INTEGER
-    const secondIndex = orderLookup.get(second.catalogId) ?? Number.MAX_SAFE_INTEGER
+  const orderedItems = project.items
+    .map((item, index) => ({ item, index }))
+    .sort((first, second) => {
+      const firstIndex = orderLookup.get(first.item.catalogId) ?? Number.MAX_SAFE_INTEGER
+      const secondIndex = orderLookup.get(second.item.catalogId) ?? Number.MAX_SAFE_INTEGER
 
-    if (firstIndex === secondIndex) {
-      return first.catalogId.localeCompare(second.catalogId, 'ru-RU')
-    }
+      if (firstIndex === secondIndex) {
+        return first.index - second.index
+      }
 
-    return firstIndex - secondIndex
-  })
+      return firstIndex - secondIndex
+    })
+    .map(({ item }) => item)
 
-  const spacingX = template?.spacingX ?? 1800
-  const spacingY = template?.spacingY ?? 1600
+  const spacingX = Math.max(500, Math.round((template?.spacingX ?? 1800) * 0.4))
+  const spacingY = Math.max(700, Math.round((template?.spacingY ?? 1600) * 0.45))
   const paddingX = template?.paddingX ?? 1400
   const paddingY = template?.paddingY ?? 1400
   const previousManual = new Map(
@@ -148,10 +151,15 @@ export function generateLayoutForProject(project: Project): {
       .filter((placement) => placement.manuallyAdjusted)
       .map((placement) => [placement.projectItemId, placement]),
   )
-  const placements: LayoutPlacement[] = []
+  const placements: LayoutPlacement[] = Array.from(previousManual.values())
+  const manualReservedBottom = placements.reduce(
+    (maxBottom, placement) => Math.max(maxBottom, getOccupiedBottom(placement)),
+    0,
+  )
 
   let currentX = paddingX
-  let currentY = paddingY
+  let currentY =
+    manualReservedBottom > 0 ? manualReservedBottom + spacingY : paddingY
   let rowHeight = 0
 
   for (const projectItem of orderedItems) {
@@ -169,17 +177,16 @@ export function generateLayoutForProject(project: Project): {
         continue
       }
 
-      const rotation = 90
+      const rotation = getDefaultPlacementRotation()
       const footprint = getFootprintSize(
         catalogItem.width,
         catalogItem.length,
         rotation,
       )
+      const occupiedWidth = footprint.width + catalogItem.safetyZone * 2
+      const occupiedHeight = footprint.height + catalogItem.safetyZone * 2
 
-      if (
-        currentX + footprint.width + catalogItem.safetyZone >
-        room.width - paddingX
-      ) {
+      if (currentX > paddingX && currentX + occupiedWidth > room.width - paddingX) {
         currentX = paddingX
         currentY += rowHeight + spacingY
         rowHeight = 0
@@ -193,8 +200,16 @@ export function generateLayoutForProject(project: Project): {
           projectItem.quantity > 1
             ? `${catalogItem.code} #${quantityIndex + 1}`
             : catalogItem.code,
-        x: fitCenter(currentX + footprint.width / 2, footprint.width / 2, room.width),
-        y: fitCenter(currentY + footprint.height / 2, footprint.height / 2, room.length),
+        x: fitCenter(
+          currentX + catalogItem.safetyZone + footprint.width / 2,
+          footprint.width / 2,
+          room.width,
+        ),
+        y: fitCenter(
+          currentY + catalogItem.safetyZone + footprint.height / 2,
+          footprint.height / 2,
+          room.length,
+        ),
         rotation,
         width: catalogItem.width,
         length: catalogItem.length,
@@ -204,11 +219,8 @@ export function generateLayoutForProject(project: Project): {
       }
 
       placements.push(placement)
-      currentX += footprint.width + spacingX + catalogItem.safetyZone * 2
-      rowHeight = Math.max(
-        rowHeight,
-        footprint.height + catalogItem.safetyZone * 2,
-      )
+      currentX += occupiedWidth + spacingX
+      rowHeight = Math.max(rowHeight, occupiedHeight)
     }
   }
 
@@ -517,4 +529,18 @@ function clamp(value: number, min: number, max: number) {
 
 export function hydrateCatalogItem(catalogId: string): CatalogItem | null {
   return getCatalogItem(catalogId)
+}
+
+function getDefaultPlacementRotation(): 0 | 90 {
+  return 0
+}
+
+function getOccupiedBottom(placement: LayoutPlacement) {
+  const footprint = getFootprintSize(
+    placement.width,
+    placement.length,
+    placement.rotation,
+  )
+
+  return placement.y + footprint.height / 2 + placement.safetyZone
 }
