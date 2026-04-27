@@ -26,35 +26,41 @@
 ## Архитектура
 
 ```text
-client (Vite + React)
-  src/
-    App.tsx
-    api.ts
-    components/ProjectCanvas.tsx
-
-shared/
-  contracts.ts
-  catalog.ts
-  geometry.ts
-  project-engine.ts
-  exporters/dxf.ts
-
+src/
+  app/                 # активный frontend Vite/React
+  legacy/              # прошлый MVP и референсный код
+  main.tsx             # клиентский entrypoint
+  styles/              # глобальные стили
 server/
-  index.ts
-  app.ts
-  store.ts
-  openrouter.ts
-  pdf.ts
+  ai/                  # интеграции с LLM
+  exports/             # серверные экспортеры
+  http/                # Express entrypoints и маршруты
+  persistence/         # SQLite-хранилище
+shared/
+  domain/              # каталог, схемы, геометрия, layout-engine
+  exporters/           # общие CAD-экспортеры
+tests/
+  integration/
+  legacy/
+  unit/
+public/
+  dxf-machines/        # полные SVG-геометрии для экспорта
+  dxf-machines-preview/# PNG-превью средней детализации для UI
+scripts/
+  generate-machine-previews.mjs
+data/
+  projects.sqlite      # локальная БД, по умолчанию не коммитится
 ```
 
 ### Основные слои
 
-- `shared/contracts.ts` — общие `zod`-схемы и типы проекта.
-- `shared/catalog.ts` — seed-каталог оборудования, шаблоны и few-shot примеры из `AI/_ИИ`.
-- `shared/project-engine.ts` — разбор текста, materialize confirm step, layout engine, AI patch fallback.
-- `server/store.ts` — хранение проектов в `SQLite`.
-- `server/openrouter.ts` — интеграция с `OpenRouter`, если заданы env-переменные.
-- `server/pdf.ts` и `shared/exporters/dxf.ts` — инженерные экспорты.
+- `shared/domain/contracts.ts` — общие `zod`-схемы и типы проекта.
+- `shared/domain/catalog.ts` — seed-каталог оборудования, шаблоны и few-shot примеры из `AI/_ИИ`.
+- `shared/domain/project-engine.ts` — разбор текста, materialize confirm step, layout engine, AI patch fallback.
+- `server/persistence/project-store.ts` — хранение проектов в `SQLite`.
+- `server/ai/openrouter.ts` — интеграция с `OpenRouter`, если заданы env-переменные.
+- `server/exports/pdf.ts` и `shared/exporters/dxf.ts` — инженерные экспорты.
+- `public/dxf-machines` и `public/dxf-machines-preview` — runtime-ассеты для экспорта и для быстрых PNG-preview в UI.
 
 ## Источник данных
 

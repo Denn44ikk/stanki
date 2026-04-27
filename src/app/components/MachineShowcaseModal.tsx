@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { MachineVisualDefinition } from '../../../shared/domain/machine-visuals.js'
 
 interface MachineShowcaseModalProps {
@@ -15,12 +15,6 @@ function MachineShowcaseModal({
   onClose,
 }: MachineShowcaseModalProps) {
   const [selectedVisualIds, setSelectedVisualIds] = useState<string[]>([])
-
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedVisualIds([])
-    }
-  }, [isOpen])
 
   const selectedLookup = useMemo(
     () => new Set(selectedVisualIds),
@@ -121,14 +115,14 @@ function MachineShowcaseModal({
                     onClick={() => toggleVisual(visual.id)}
                     className="block w-full text-left"
                   >
-                    <div className="rounded-[22px] border border-white/8 bg-[linear-gradient(rgba(148,163,184,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.14)_1px,transparent_1px)] bg-[size:28px_28px] bg-slate-900/70 p-4">
-                      <div className="flex min-h-[220px] items-center justify-center overflow-hidden">
+                    <div className="rounded-[22px] border border-white/8 bg-[linear-gradient(rgba(148,163,184,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.14)_1px,transparent_1px)] bg-[size:28px_28px] bg-slate-900/70 p-3">
+                      <div className="flex min-h-[240px] items-center justify-center overflow-hidden">
                         <img
-                          src={visual.fullGeometry.url}
+                          src={visual.preview.url}
                           alt={visual.title}
                           loading="lazy"
                           decoding="async"
-                          className="max-h-[180px] max-w-full object-contain"
+                          className="max-h-[200px] w-full object-contain"
                         />
                       </div>
                     </div>

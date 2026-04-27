@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type Konva from 'konva'
 import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import {
@@ -7,7 +7,7 @@ import {
 } from '../../../shared/domain/geometry.js'
 import {
   getMachineCanvasAssetByCatalogId,
-  type MachineFullGeometryAsset,
+  type MachinePreviewAsset,
 } from '../../../shared/domain/machine-visuals.js'
 import type {
   LayoutPlacement,
@@ -42,6 +42,7 @@ function ProjectCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const stageRef = useRef<Konva.Stage | null>(null)
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
+  const [zoom, setZoom] = useState(1)
 
   useEffect(() => {
     const node = containerRef.current
@@ -67,19 +68,26 @@ function ProjectCanvas({
     }
   }, [])
 
-  const stageWidth = Math.max(containerSize.width, 360)
-  const stageHeight = Math.max(containerSize.height, 560)
+  const viewportWidth = Math.max(containerSize.width, 360)
+  const viewportHeight = Math.max(containerSize.height, 560)
   const framePadding = 52
-  const drawableWidth = Math.max(stageWidth - framePadding * 2, 120)
-  const drawableHeight = Math.max(stageHeight - framePadding * 2, 120)
-  const scale = Math.min(drawableWidth / room.width, drawableHeight / room.length)
+  const drawableWidth = Math.max(viewportWidth - framePadding * 2, 120)
+  const drawableHeight = Math.max(viewportHeight - framePadding * 2, 120)
+  const baseScale = Math.min(drawableWidth / room.width, drawableHeight / room.length)
+  const scale = baseScale * zoom
   const roomPixelWidth = room.width * scale
   const roomPixelHeight = room.length * scale
+  const stageWidth = Math.max(viewportWidth, roomPixelWidth + framePadding * 2)
+  const stageHeight = Math.max(viewportHeight, roomPixelHeight + framePadding * 2)
   const originX = (stageWidth - roomPixelWidth) / 2
   const originY = (stageHeight - roomPixelHeight) / 2
   const selectedPlacement =
     placements.find((placement) => placement.id === selectedPlacementId) ?? null
   const machineImages = useMachineImages(placements)
+
+  const handleZoomChange = (nextZoom: number) => {
+    setZoom(clampZoom(nextZoom))
+  }
 
   const handleStageMouseDown = (targetName: string) => {
     if (targetName === 'stage' || targetName === 'room-shell') {
@@ -103,7 +111,7 @@ function ProjectCanvas({
   }
 
   return (
-    <section className="flex min-h-[560px] flex-1 flex-col overflow-hidden rounded-[34px] border border-white/70 bg-white/75 shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur">
+    <section className="flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-[34px] border border-white/70 bg-white/75 shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-4 sm:px-6">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
@@ -157,132 +165,173 @@ function ProjectCanvas({
 
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.08),_transparent_38%),linear-gradient(180deg,_rgba(241,245,249,0.95),_rgba(226,232,240,0.96))]"
+        className="relative min-w-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.08),_transparent_38%),linear-gradient(180deg,_rgba(241,245,249,0.95),_rgba(226,232,240,0.96))]"
       >
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px)] bg-[size:36px_36px]" />
+        <div className="relative" style={{ width: stageWidth, height: stageHeight }}>
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px)] bg-[size:36px_36px]" />
 
-        <Stage
-          ref={stageRef}
-          width={stageWidth}
-          height={stageHeight}
-          onMouseDown={(event) => {
-            const target = event.target
-            const targetName =
-              target === target.getStage() ? 'stage' : target.name()
-            handleStageMouseDown(targetName)
-          }}
-          className="relative z-10"
-        >
-          <Layer>
-            <Rect
-              name="room-shell"
-              x={originX}
-              y={originY}
-              width={roomPixelWidth}
-              height={roomPixelHeight}
-              fill="#fefbf2"
-              stroke="#0f172a"
-              strokeWidth={2}
-              cornerRadius={26}
-              shadowBlur={22}
-              shadowColor="rgba(15, 23, 42, 0.08)"
-            />
+          <Stage
+            ref={stageRef}
+            width={stageWidth}
+            height={stageHeight}
+            onMouseDown={(event) => {
+              const target = event.target
+              const targetName =
+                target === target.getStage() ? 'stage' : target.name()
+              handleStageMouseDown(targetName)
+            }}
+            onWheel={(event) => {
+              if (!(event.evt.ctrlKey || event.evt.metaKey)) {
+                return
+              }
 
-            <Text
-              x={originX + 16}
-              y={originY + 14}
-              text={`Помещение • ${room.width.toLocaleString('ru-RU')} x ${room.length.toLocaleString('ru-RU')} мм`}
-              fontSize={14}
-              fontFamily="Manrope"
-              fill="#475569"
-            />
+              event.evt.preventDefault()
+              handleZoomChange(
+                zoom * (event.evt.deltaY > 0 ? 1 / CANVAS_ZOOM_STEP : CANVAS_ZOOM_STEP),
+              )
+            }}
+            className="relative z-10"
+          >
+            <Layer>
+              <Rect
+                name="room-shell"
+                x={originX}
+                y={originY}
+                width={roomPixelWidth}
+                height={roomPixelHeight}
+                fill="#fefbf2"
+                stroke="#0f172a"
+                strokeWidth={2}
+                cornerRadius={26}
+                shadowBlur={22}
+                shadowColor="rgba(15, 23, 42, 0.08)"
+              />
 
-            {placements.map((placement) => {
-              const centerX = originX + placement.x * scale
-              const centerY = originY + placement.y * scale
-              const isSelected = placement.id === selectedPlacementId
-              const visual = getMachineCanvasAssetByCatalogId(placement.catalogId)
-              const visualImage = visual ? machineImages[visual.url] : null
-              const imageLayout = getVisualLayoutMetrics(placement, visual, scale)
+              <Text
+                x={originX + 16}
+                y={originY + 14}
+                text={`Помещение • ${room.width.toLocaleString('ru-RU')} x ${room.length.toLocaleString('ru-RU')} мм`}
+                fontSize={14}
+                fontFamily="Manrope"
+                fill="#475569"
+              />
 
-              return (
-                <Group
-                  key={placement.id}
-                  x={centerX}
-                  y={centerY}
-                  draggable
-                  onClick={() => onSelect(placement.id)}
-                  onTap={() => onSelect(placement.id)}
-                  onDblClick={() => onRotate(placement.id)}
-                  onDragStart={() => onSelect(placement.id)}
-                  onDragEnd={(event) => {
-                    const nextX = (event.target.x() - originX) / scale
-                    const nextY = (event.target.y() - originY) / scale
-                    onMove(placement.id, nextX, nextY)
-                  }}
-                >
-                  <Group rotation={placement.rotation}>
-                    {visualImage ? (
-                      <>
-                        {isSelected ? (
-                          <Rect
-                            x={imageLayout.x - 10}
-                            y={imageLayout.y - 10}
-                            width={imageLayout.width + 20}
-                            height={imageLayout.height + 20}
-                            stroke="#0891b2"
-                            strokeWidth={2}
-                            cornerRadius={18}
-                            opacity={0.9}
+              {placements.map((placement) => {
+                const centerX = originX + placement.x * scale
+                const centerY = originY + placement.y * scale
+                const isSelected = placement.id === selectedPlacementId
+                const visual = getMachineCanvasAssetByCatalogId(placement.catalogId)
+                const visualImage = visual ? machineImages[visual.url] : null
+                const imageLayout = getVisualLayoutMetrics(placement, scale)
+
+                return (
+                  <Group
+                    key={placement.id}
+                    x={centerX}
+                    y={centerY}
+                    draggable
+                    onClick={() => onSelect(placement.id)}
+                    onTap={() => onSelect(placement.id)}
+                    onDblClick={() => onRotate(placement.id)}
+                    onDragStart={() => onSelect(placement.id)}
+                    onDragEnd={(event) => {
+                      const nextX = (event.target.x() - originX) / scale
+                      const nextY = (event.target.y() - originY) / scale
+                      onMove(placement.id, nextX, nextY)
+                    }}
+                  >
+                    <Group rotation={placement.rotation}>
+                      {visualImage ? (
+                        <>
+                          {isSelected ? (
+                            <Rect
+                              x={imageLayout.x - 10}
+                              y={imageLayout.y - 10}
+                              width={imageLayout.width + 20}
+                              height={imageLayout.height + 20}
+                              stroke="#0891b2"
+                              strokeWidth={2}
+                              cornerRadius={18}
+                              opacity={0.9}
+                            />
+                          ) : null}
+                          <KonvaImage
+                            image={visualImage}
+                            x={imageLayout.x}
+                            y={imageLayout.y}
+                            width={imageLayout.width}
+                            height={imageLayout.height}
+                            opacity={0.98}
+                            perfectDrawEnabled={false}
+                            shadowForStrokeEnabled={false}
                           />
-                        ) : null}
-                        <KonvaImage
-                          image={visualImage}
-                          x={imageLayout.x}
-                          y={imageLayout.y}
-                          width={imageLayout.width}
-                          height={imageLayout.height}
-                          opacity={0.98}
-                          perfectDrawEnabled={false}
-                          shadowForStrokeEnabled={false}
-                        />
+                          <Rect
+                            x={imageLayout.x}
+                            y={imageLayout.y}
+                            width={imageLayout.width}
+                            height={imageLayout.height}
+                            fill="rgba(0,0,0,0)"
+                          />
+                        </>
+                      ) : (
                         <Rect
                           x={imageLayout.x}
                           y={imageLayout.y}
                           width={imageLayout.width}
                           height={imageLayout.height}
-                          fill="rgba(0,0,0,0)"
+                          fill={placement.color}
+                          opacity={0.94}
+                          stroke={isSelected ? '#0891b2' : '#0f172a'}
+                          strokeWidth={isSelected ? 4 : 2}
+                          cornerRadius={18}
                         />
-                      </>
-                    ) : (
-                      <Rect
-                        x={imageLayout.x}
-                        y={imageLayout.y}
-                        width={imageLayout.width}
-                        height={imageLayout.height}
-                        fill={placement.color}
-                        opacity={0.94}
-                        stroke={isSelected ? '#0891b2' : '#0f172a'}
-                        strokeWidth={isSelected ? 4 : 2}
-                        cornerRadius={18}
-                      />
-                    )}
+                      )}
+                    </Group>
                   </Group>
-                </Group>
-              )
-            })}
+                )
+              })}
 
-            {selectedPlacement ? (
-              <DimensionGuides
-                placement={selectedPlacement}
-                room={room}
-                originX={originX}
-                originY={originY}
-                scale={scale}
-              />
-            ) : null}
-          </Layer>
-        </Stage>
+              {selectedPlacement ? (
+                <DimensionGuides
+                  placement={selectedPlacement}
+                  room={room}
+                  originX={originX}
+                  originY={originY}
+                  scale={scale}
+                />
+              ) : null}
+            </Layer>
+          </Stage>
+        </div>
+
+        <div className="pointer-events-none absolute right-4 top-4 z-20 flex flex-col items-end gap-2">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/92 px-2 py-2 text-xs text-slate-700 shadow-lg backdrop-blur">
+            <button
+              type="button"
+              onClick={() => handleZoomChange(zoom / CANVAS_ZOOM_STEP)}
+              className="rounded-full border border-slate-300 px-2 py-1 font-semibold transition hover:border-cyan-400 hover:text-cyan-700"
+            >
+              -
+            </button>
+            <button
+              type="button"
+              onClick={() => handleZoomChange(1)}
+              className="rounded-full border border-slate-300 px-3 py-1 font-semibold transition hover:border-cyan-400 hover:text-cyan-700"
+            >
+              {formatZoomValue(zoom)}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleZoomChange(zoom * CANVAS_ZOOM_STEP)}
+              className="rounded-full border border-slate-300 px-2 py-1 font-semibold transition hover:border-cyan-400 hover:text-cyan-700"
+            >
+              +
+            </button>
+          </div>
+          <div className="pointer-events-none rounded-full border border-slate-200/70 bg-white/90 px-3 py-1 text-[11px] text-slate-500 shadow">
+            Ctrl + wheel для zoom
+          </div>
+        </div>
 
         <div className="pointer-events-none absolute bottom-4 right-4 z-20 rounded-full border border-slate-200/80 bg-white/90 px-3 py-2 text-xs text-slate-600 shadow-lg">
           1 px ~= {Math.max(1, Math.round(1 / scale)).toLocaleString('ru-RU')} мм
@@ -294,24 +343,10 @@ function ProjectCanvas({
 
 function getVisualLayoutMetrics(
   placement: LayoutPlacement,
-  visual: MachineFullGeometryAsset | null,
   scale: number,
 ) {
-  const availableWidth = placement.width * scale
-  const availableHeight = placement.length * scale
-
-  if (!visual) {
-    return {
-      width: availableWidth,
-      height: availableHeight,
-      x: -availableWidth / 2,
-      y: -availableHeight / 2,
-    }
-  }
-
-  const fitScale = Math.min(availableWidth / visual.width, availableHeight / visual.height)
-  const width = visual.width * fitScale
-  const height = visual.height * fitScale
+  const width = placement.width * scale
+  const height = placement.length * scale
 
   return {
     width,
@@ -332,7 +367,7 @@ function useMachineImages(placements: LayoutPlacement[]) {
         new Map(
           placements
             .map((placement) => getMachineCanvasAssetByCatalogId(placement.catalogId))
-            .filter((visual): visual is MachineFullGeometryAsset => Boolean(visual))
+            .filter((visual): visual is MachinePreviewAsset => Boolean(visual))
             .map((visual) => [visual.url, visual] as const),
         ).values(),
       ),
@@ -343,7 +378,6 @@ function useMachineImages(placements: LayoutPlacement[]) {
     let cancelled = false
 
     if (visuals.length === 0) {
-      setImages({})
       return
     }
 
@@ -384,7 +418,7 @@ function useMachineImages(placements: LayoutPlacement[]) {
     }
   }, [visuals])
 
-  return images
+  return visuals.length === 0 ? {} : images
 }
 
 interface LegendChipProps {
@@ -537,4 +571,34 @@ function formatDistance(value: number) {
   return Math.round(value).toLocaleString('ru-RU')
 }
 
-export default ProjectCanvas
+function formatZoomValue(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
+function clampZoom(value: number) {
+  return Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, Number.parseFloat(value.toFixed(2))))
+}
+
+const MIN_CANVAS_ZOOM = 0.5
+const MAX_CANVAS_ZOOM = 4
+const CANVAS_ZOOM_STEP = 1.2
+
+function areProjectCanvasPropsEqual(
+  previousProps: ProjectCanvasProps,
+  nextProps: ProjectCanvasProps,
+) {
+  return (
+    previousProps.title === nextProps.title &&
+    previousProps.room.width === nextProps.room.width &&
+    previousProps.room.length === nextProps.room.length &&
+    previousProps.placements === nextProps.placements &&
+    previousProps.warnings === nextProps.warnings &&
+    previousProps.selectedPlacementId === nextProps.selectedPlacementId
+  )
+}
+
+const MemoProjectCanvas = memo(ProjectCanvas, areProjectCanvasPropsEqual)
+
+MemoProjectCanvas.displayName = 'ProjectCanvas'
+
+export default MemoProjectCanvas

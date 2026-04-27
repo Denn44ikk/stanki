@@ -9,6 +9,8 @@
 - `server/ai` — интеграция с OpenRouter. Здесь живут реальные вызовы LLM.
 - `server/persistence` — SQLite-хранилище проектов.
 - `shared/domain` — общая доменная модель: каталог оборудования, `zod`-контракты, геометрия, layout-engine и fallback-правила.
+- `public/dxf-machines` и `public/dxf-machines-preview` — runtime-ассеты станков: полная геометрия для экспорта и PNG-превью средней детализации для UI.
+- `scripts/generate-machine-previews.mjs` — служебный генератор PNG-превью из полной библиотеки SVG.
 - `src/legacy` — старый MVP ручной расстановки, оставленный как референс и отдельный тестируемый срез.
 
 ## Where AI Participates
@@ -43,4 +45,5 @@ AI участвует не во всём пайплайне, а в двух ко
 4. Ответ приводится к общим контрактам из `shared/domain/contracts.ts`.
 5. Layout строится в `shared/domain/project-engine.ts`.
 6. Проект сохраняется в SQLite через `server/persistence/project-store.ts`.
-7. Экспорт идёт через `shared/exporters/dxf.ts` и `server/exports/pdf.ts`.
+7. UI-превью берутся из `public/dxf-machines-preview`, а экспорт читает полные SVG из `public/dxf-machines`.
+8. Экспорт идёт через `shared/exporters/dxf.ts` и `server/exports/pdf.ts`.

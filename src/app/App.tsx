@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import {
   applyAiPatch,
   createProject,
@@ -11,12 +11,10 @@ import {
   updateProject,
 } from './api/projects'
 import { getSystemStatus } from './api/system'
-import MachineShowcaseModal from './components/MachineShowcaseModal'
-import ProjectCanvas from './components/ProjectCanvas'
 import {
   getPreferredCatalogIdByVisualId,
   getMachineShowcaseVisuals,
-  getMachineCanvasAssetByCatalogId,
+  getMachinePreviewByCatalogId,
 } from '../../shared/domain/machine-visuals.js'
 import {
   DEFAULT_ROOM,
@@ -41,6 +39,9 @@ import type {
   UpdateProjectInput,
 } from '../../shared/domain/contracts.js'
 
+const LazyMachineShowcaseModal = lazy(() => import('./components/MachineShowcaseModal'))
+const LazyProjectCanvas = lazy(() => import('./components/ProjectCanvas'))
+
 function App() {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [project, setProject] = useState<Project | null>(null)
@@ -49,6 +50,7 @@ function App() {
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isShowcaseOpen, setIsShowcaseOpen] = useState(false)
+  const [showcaseSession, setShowcaseSession] = useState(0)
   const [createTitle, setCreateTitle] = useState('Новый проект линии')
   const [createMode, setCreateMode] = useState<ProjectMode>('manual')
   const [aiInstruction, setAiInstruction] = useState('')
@@ -61,13 +63,18 @@ function App() {
   )
   const showcaseVisuals = useMemo(() => getMachineShowcaseVisuals(), [])
 
+  const openShowcase = () => {
+    setShowcaseSession((currentSession) => currentSession + 1)
+    setIsShowcaseOpen(true)
+  }
+
+  const closeShowcase = () => {
+    setIsShowcaseOpen(false)
+  }
+
   const loadProjects = async () => {
     const nextProjects = await listProjects()
     setProjects(nextProjects)
-
-    if (!project && nextProjects.length > 0) {
-      await openProject(nextProjects[0].id)
-    }
   }
 
   useEffect(() => {
@@ -366,7 +373,7 @@ function App() {
     })
 
     setSelectedPlacementId(null)
-    setIsShowcaseOpen(false)
+    closeShowcase()
     setNotice(`Добавлено в проект и расставлено: ${catalogIds.length}`)
   }
 
@@ -549,9 +556,9 @@ function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.08),_transparent_42%),linear-gradient(135deg,_#f4efe4_0%,_#f8f5ee_40%,_#efe7d6_100%)] text-slate-900">
-        <div className="mx-auto flex min-h-screen max-w-[1820px] flex-col gap-4 px-4 py-4 xl:flex-row xl:px-6 xl:py-6">
-        <aside className="w-full rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_rgba(15,23,42,0.94),_rgba(30,41,59,0.92))] p-4 text-slate-100 shadow-[0_30px_80px_rgba(15,23,42,0.24)] xl:w-[330px]">
+      <div className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(30,64,175,0.08),_transparent_42%),linear-gradient(135deg,_#f4efe4_0%,_#f8f5ee_40%,_#efe7d6_100%)] text-slate-900">
+        <div className="mx-auto flex min-h-screen max-w-[1820px] min-w-0 flex-col gap-4 px-4 py-4 xl:flex-row xl:px-6 xl:py-6">
+        <aside className="w-full rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_rgba(15,23,42,0.94),_rgba(30,41,59,0.92))] p-4 text-slate-100 shadow-[0_30px_80px_rgba(15,23,42,0.24)] xl:w-[330px] xl:shrink-0">
           <div className="mb-5 space-y-2">
             <span className="inline-flex rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-300">
               AI-First Layout
@@ -569,7 +576,7 @@ function App() {
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => setIsShowcaseOpen(true)}
+                onClick={openShowcase}
                 className="rounded-full border border-cyan-300/40 bg-cyan-300/12 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/20"
               >
                 Открыть DXF-витрину станков
@@ -591,6 +598,11 @@ function App() {
                   : 'Если OPENROUTER_API_KEY не задан, используется детерминированный fallback по каталогу и алиасам.'}
               </div>
             </div>
+          {notice ? (
+            <div className="mt-4 rounded-[22px] border border-amber-200/40 bg-amber-50/95 px-4 py-3 text-sm text-amber-950 shadow-[0_10px_30px_rgba(120,53,15,0.14)]">
+              {notice}
+            </div>
+          ) : null}
           <section className="rounded-[26px] border border-white/10 bg-white/6 p-4">
             <div className="mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-200">
@@ -688,8 +700,8 @@ function App() {
         </aside>
 
         {project ? (
-          <div className="flex flex-1 flex-col gap-4 xl:flex-row">
-            <section className="w-full rounded-[32px] border border-white/70 bg-white/75 p-4 shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur xl:w-[430px]">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 xl:flex-row">
+            <section className="w-full rounded-[32px] border border-white/70 bg-white/75 p-4 shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur xl:w-[430px] xl:shrink-0">
               <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-2">
                   <div className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-amber-900">
@@ -727,12 +739,6 @@ function App() {
                   </button>
                 </div>
               </header>
-
-              {notice ? (
-                <div className="mb-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                  {notice}
-                </div>
-              ) : null}
 
               <div className="space-y-5 overflow-y-auto pr-1 xl:max-h-[calc(100vh-7rem)]">
                 <section className="rounded-[26px] border border-slate-200/70 bg-slate-50/90 p-4">
@@ -1159,33 +1165,35 @@ function App() {
               </div>
             </section>
 
-            <ProjectCanvas
-              title={project.title}
-              room={project.room}
-              placements={project.placements}
-              warnings={project.warnings}
-              selectedPlacementId={selectedPlacementId}
-              onSelect={setSelectedPlacementId}
-              onMove={handleMovePlacement}
-              onRotate={(placementId) => {
-                setSelectedPlacementId(placementId)
-                updatePlacement(placementId, (placement) => ({
-                  ...placement,
-                  rotation: placement.rotation === 0 ? 90 : 0,
-                  manuallyAdjusted: true,
-                }))
-              }}
-              onExportDxf={() => {
-                if (project) {
-                  void exportCurrentProjectFile('dxf')
-                }
-              }}
-              onExportPdf={() => {
-                if (project) {
-                  void exportCurrentProjectFile('pdf')
-                }
-              }}
-            />
+            <Suspense fallback={<ProjectCanvasFallback title={project.title} />}>
+              <LazyProjectCanvas
+                title={project.title}
+                room={project.room}
+                placements={project.placements}
+                warnings={project.warnings}
+                selectedPlacementId={selectedPlacementId}
+                onSelect={setSelectedPlacementId}
+                onMove={handleMovePlacement}
+                onRotate={(placementId) => {
+                  setSelectedPlacementId(placementId)
+                  updatePlacement(placementId, (placement) => ({
+                    ...placement,
+                    rotation: placement.rotation === 0 ? 90 : 0,
+                    manuallyAdjusted: true,
+                  }))
+                }}
+                onExportDxf={() => {
+                  if (project) {
+                    void exportCurrentProjectFile('dxf')
+                  }
+                }}
+                onExportPdf={() => {
+                  if (project) {
+                    void exportCurrentProjectFile('pdf')
+                  }
+                }}
+              />
+            </Suspense>
           </div>
         ) : (
           <main className="flex flex-1 items-center justify-center rounded-[34px] border border-white/70 bg-white/75 p-8 text-center shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur">
@@ -1210,13 +1218,73 @@ function App() {
         </div>
       </div>
 
-      <MachineShowcaseModal
-        isOpen={isShowcaseOpen}
-        visuals={showcaseVisuals}
-        onAddToProject={handleAddShowcaseVisuals}
-        onClose={() => setIsShowcaseOpen(false)}
-      />
+      {isShowcaseOpen ? (
+        <Suspense fallback={<MachineShowcaseModalFallback onClose={closeShowcase} />}>
+          <LazyMachineShowcaseModal
+            key={showcaseSession}
+            isOpen={isShowcaseOpen}
+            visuals={showcaseVisuals}
+            onAddToProject={handleAddShowcaseVisuals}
+            onClose={closeShowcase}
+          />
+        </Suspense>
+      ) : null}
     </>
+  )
+}
+
+interface ProjectCanvasFallbackProps {
+  title: string
+}
+
+function ProjectCanvasFallback({ title }: ProjectCanvasFallbackProps) {
+  return (
+    <section className="flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-[34px] border border-white/70 bg-white/75 shadow-[0_35px_110px_rgba(15,23,42,0.12)] backdrop-blur">
+      <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+        <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+          Схема проекта
+        </div>
+        <div className="mt-1 text-sm text-slate-600">{title}</div>
+      </div>
+      <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.08),_transparent_38%),linear-gradient(180deg,_rgba(241,245,249,0.95),_rgba(226,232,240,0.96))]">
+        <div className="rounded-full border border-slate-200 bg-white/90 px-5 py-3 text-sm font-medium text-slate-600 shadow">
+          Загружаем окно помещения...
+        </div>
+      </div>
+    </section>
+  )
+}
+
+interface MachineShowcaseModalFallbackProps {
+  onClose: () => void
+}
+
+function MachineShowcaseModalFallback({ onClose }: MachineShowcaseModalFallbackProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
+      <div className="flex w-full max-w-3xl flex-col gap-5 rounded-[32px] border border-white/12 bg-slate-950 p-6 shadow-[0_40px_120px_rgba(15,23,42,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
+              DXF-Витрина
+            </div>
+            <div className="mt-2 text-2xl font-bold text-white">
+              Загружаем библиотеку станков...
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/15 bg-white/6 px-4 py-2 text-sm font-semibold text-white transition hover:border-cyan-300 hover:text-cyan-200"
+          >
+            Закрыть
+          </button>
+        </div>
+        <div className="rounded-[24px] border border-white/10 bg-white/4 px-5 py-6 text-sm text-slate-300">
+          Подгружаем витрину отдельно, чтобы основной экран открывался быстрее.
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1284,7 +1352,7 @@ function CatalogVisualPreview({
   catalogId,
   size = 'small',
 }: CatalogVisualPreviewProps) {
-  const preview = getMachineCanvasAssetByCatalogId(catalogId)
+  const preview = getMachinePreviewByCatalogId(catalogId)
   const sizeClasses =
     size === 'large'
       ? 'h-24 w-32 rounded-[18px] p-3'

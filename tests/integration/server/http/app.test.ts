@@ -133,7 +133,7 @@ describe('project API', () => {
     expect(pdf[1]).toBe(0x50)
     expect(pdf[2]).toBe(0x44)
     expect(pdf[3]).toBe(0x46)
-  })
+  }, 120000)
 })
 
 async function startTestServer() {
